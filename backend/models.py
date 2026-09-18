@@ -388,8 +388,9 @@ class RequirementCategory(Base):
 
     __tablename__ = "requirement_categories"
     __table_args__ = (
+        # '전공' = 전공필수 + 전공선택 합산 조건 (예: 전공 64학점 이상)
         CheckConstraint(
-            "category IN ('전공필수', '전공선택', '교양필수', '교양선택')",
+            "category IN ('전공필수', '전공선택', '전공', '교양필수', '교양선택')",
             name="ck_requirement_categories_category",
         ),
         {"comment": "졸업요건의 카테고리별 최소 이수 학점"},
@@ -405,7 +406,7 @@ class RequirementCategory(Base):
     category = Column(
         String(20),
         nullable=False,
-        comment="이수 구분: 전공필수 | 전공선택 | 교양필수 | 교양선택",
+        comment="이수 구분: 전공필수 | 전공선택 | 전공(전공필수+전공선택 합산) | 교양필수 | 교양선택",
     )
     min_credits = Column(Integer, nullable=False, comment="이 카테고리에서 최소로 채워야 하는 학점")
 
