@@ -1,0 +1,35 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Pretendard', 'Pretendard Variable', -apple-system, system-ui, sans-serif;
+
+  --color-bg: #f7f5ff;
+  --color-lav: #e4deff;
+  --color-brand: #6c4df6;
+  --color-ink: #1f1535;
+  --color-sub: #6b6580;
+  --color-ok: #2ba471;
+  --color-warn: #f5a524;
+  --color-danger: #e5484d;
+}
+
+html {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  background: #efeafd;
+}
+
+/* Hide scrollbars inside phone frames until scrolling */
+.screen-scroll {
+  scrollbar-width: none;
+}
+.screen-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
