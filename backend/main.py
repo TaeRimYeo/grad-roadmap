@@ -24,7 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from db import get_db
-from routers import admin, auth, meta
+from routers import admin, auth, diagnose, meta
 
 # =========================================================================
 # 1. 앱 생성
@@ -115,6 +115,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 app.include_router(auth.router)  # /api/auth/...  회원가입·로그인·내 정보
 app.include_router(meta.router)  # /api/meta/...  드롭다운 선택지 (인증 불필요)
 app.include_router(admin.router)  # /api/admin/... 관리자 전용
+app.include_router(diagnose.router)  # /api/diagnose 졸업 진단 (로그인 필요)
 
 
 # =========================================================================

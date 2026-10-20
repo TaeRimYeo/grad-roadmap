@@ -13,8 +13,9 @@ FastAPI 는 라우터 함수의 매개변수 타입이 Pydantic 모델이면
 """
 
 import re
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
 # =========================================================================
@@ -126,6 +127,54 @@ class LoginRequest(BaseModel):
     def normalize_email(cls, value):
         # 가입할 때와 똑같이 소문자로 맞춰야 같은 계정을 찾을 수 있습니다.
         return _normalize_email(value) if isinstance(value, str) else value
+
+
+class CompletedItem(BaseModel):
+    """
+    이수 과목 한 건. 두 가지 모양 중 하나로 보냅니다.
+
+        {"code": "CM1108"}                                    ← DB 에 있는 과목
+        {"name": "글쓰기", "credits": 2, "category": "교양선택"} ← 직접 입력한 과목
+
+    code 가 있으면 name·credits·category 는 무시하고 DB 값을 씁니다.
+    (DB 에 없는 code 인지는 DB 를 봐야 알 수 있으므로 라우터에서 422 로 처리합니다)
+    """
+
+    code: str | None = Field(default=None, min_length=1, max_length=20)
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    # 한 과목 학점은 1~30 (학기제현장실습 18학점보다 넉넉하게)
+    credits: int | None = Field(default=None, ge=1, le=30)
+    # Literal : 이 네 값 중 하나만 허용 (DB 의 ck_courses_category 와 같은 목록)
+    category: Literal["전공필수", "전공선택", "교양필수", "교양선택"] | None = None
+
+    @field_validator("code", "name", mode="before")
+    @classmethod
+    def strip_text(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def check_shape(self):
+        """
+        필드 하나가 아니라 '필드끼리의 관계' 를 검사할 때는 model_validator 를 씁니다.
+        code 가 없으면 직접 입력 과목이므로 name·credits·category 가 모두 있어야 합니다.
+        """
+        if self.code is None and (self.name is None or self.credits is None or self.category is None):
+            raise PydanticCustomError(
+                "completed_item_incomplete",
+                "직접 입력한 과목은 과목명·학점·이수구분을 모두 입력해야 합니다",
+            )
+        return self
+
+
+class DiagnoseRequest(BaseModel):
+    """POST /api/diagnose 요청. 학위과정·전공은 토큰의 사용자 정보에서 가져오므로 받지 않습니다."""
+
+    # max_length : 지나치게 큰 요청을 막기 위한 상한 (전문학사 전체 과목은 60개 정도)
+    completed: list[CompletedItem] = Field(default_factory=list, max_length=200)
+
+    def to_plain(self) -> list[dict]:
+        """diagnose() 가 받는 모양(dict 목록)으로 바꿉니다. 값이 None 인 필드는 뺍니다."""
+        return [item.model_dump(exclude_none=True) for item in self.completed]
 
 
 # =========================================================================
