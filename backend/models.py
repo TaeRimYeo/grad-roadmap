@@ -465,6 +465,10 @@ class User(Base):
         comment="소속 세부전공 ID (참고용, 강한 제약 아님)",
     )
     admission_year = Column(Integer, nullable=True, comment="입학년도")
+    # 학번은 '2024123456' 처럼 숫자만 있어 보여도 계산에 쓰지 않고, 앞자리 0 이 있을 수도
+    # 있으므로 문자열로 저장합니다. 관리자 계정은 학번이 없으니 nullable.
+    # (DB 에는 ALTER TABLE 로 이미 컬럼이 추가되어 있음)
+    student_no = Column(String(20), nullable=True, comment="학번")
     is_active = Column(Boolean, nullable=False, default=True, comment="계정 활성화 여부")
     created_at = Column(
         DateTime(timezone=True),
