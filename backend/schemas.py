@@ -18,6 +18,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
+from grades import VALID_GRADES
+
 # =========================================================================
 # 0. 공통 도우미
 # =========================================================================
@@ -175,6 +177,132 @@ class DiagnoseRequest(BaseModel):
     def to_plain(self) -> list[dict]:
         """diagnose() 가 받는 모양(dict 목록)으로 바꿉니다. 값이 None 인 필드는 뺍니다."""
         return [item.model_dump(exclude_none=True) for item in self.completed]
+
+
+# ---- 이수 내역 저장 (POST·PATCH /api/completed) ----
+#
+# 학년·학기·성적은 잘못 입력하기 쉬우므로 '입력 형식 오류' 대신 무엇이 틀렸는지 한국어로 알려줍니다.
+
+SEMESTERS = ("1", "2", "여름", "겨울")
+
+
+def _check_year(value):
+    # bool 은 파이썬에서 int 의 한 종류(True == 1)라서 따로 막습니다.
+    if value is not None and not (isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 4):
+        raise PydanticCustomError("invalid_year", "학년은 1~4 중 하나여야 합니다")
+    return value
+
+
+def _check_semester(value):
+    # 프론트가 학기를 숫자 1, 2 로 보내도 받아줍니다. (JSON 의 1 → 문자열 "1")
+    if isinstance(value, int) and not isinstance(value, bool):
+        value = str(value)
+    if value is not None and value not in SEMESTERS:
+        raise PydanticCustomError("invalid_semester", "학기는 1, 2, 여름, 겨울 중 하나여야 합니다")
+    return value
+
+
+def _check_grade(value):
+    if value is not None and value not in VALID_GRADES:
+        raise PydanticCustomError("invalid_grade", "성적은 " + ", ".join(VALID_GRADES) + " 중 하나여야 합니다")
+    return value
+
+
+class CompletedBulkItem(CompletedItem):
+    """
+    bulk 요청의 items 한 개 = 과목 정보(CompletedItem 과 같음) + 성적.
+    grade 를 비우거나 null 로 보내면 '성적 모름' 으로 저장합니다.
+    """
+
+    grade: str | None = None
+
+    @field_validator("grade", mode="before")
+    @classmethod
+    def validate_grade(cls, value):
+        return _check_grade(value)
+
+
+class CompletedCreate(CompletedBulkItem):
+    """POST /api/completed 요청 = 과목 정보 + 성적 + 들은 시기(학년·학기)."""
+
+    taken_year: int
+    taken_semester: str
+
+    @field_validator("taken_year", mode="before")
+    @classmethod
+    def validate_year(cls, value):
+        return _check_year(value)
+
+    @field_validator("taken_semester", mode="before")
+    @classmethod
+    def validate_semester(cls, value):
+        return _check_semester(value)
+
+
+class CompletedBulkRequest(BaseModel):
+    """
+    POST /api/completed/bulk 요청. 같은 학기에 들은 과목 여러 개를 한 번에 등록합니다.
+
+        {"taken_year": 1, "taken_semester": "1",
+         "items": [{"code": "CM1101", "grade": "A+"},
+                   {"name": "글쓰기", "credits": 2, "category": "교양선택", "grade": null}]}
+    """
+
+    taken_year: int
+    taken_semester: str
+    # 한 학기 과목은 많아야 10개 남짓이므로 100개면 넉넉합니다. 빈 목록은 의미가 없으므로 거부.
+    items: list[CompletedBulkItem] = Field(min_length=1, max_length=100)
+
+    @field_validator("taken_year", mode="before")
+    @classmethod
+    def validate_year(cls, value):
+        return _check_year(value)
+
+    @field_validator("taken_semester", mode="before")
+    @classmethod
+    def validate_semester(cls, value):
+        return _check_semester(value)
+
+
+class CompletedUpdate(BaseModel):
+    """
+    PATCH /api/completed/{id} 요청. 보낸 필드만 바뀝니다.
+
+    [보내지 않은 필드 vs null 을 보낸 필드]
+        {"grade": null}  → 성적을 '성적 모름' 으로 지움
+        {}               → grade 는 그대로
+    둘 다 파이썬에서는 grade=None 이라 값만 보면 구분이 안 됩니다.
+    그래서 Pydantic 이 기록해두는 model_fields_set("요청에 실제로 들어 있던 필드 이름들")으로 구분합니다.
+    """
+
+    grade: str | None = None
+    taken_year: int | None = None
+    taken_semester: str | None = None
+
+    @field_validator("grade", mode="before")
+    @classmethod
+    def validate_grade(cls, value):
+        return _check_grade(value)
+
+    @field_validator("taken_year", mode="before")
+    @classmethod
+    def validate_year(cls, value):
+        return _check_year(value)
+
+    @field_validator("taken_semester", mode="before")
+    @classmethod
+    def validate_semester(cls, value):
+        return _check_semester(value)
+
+    @model_validator(mode="after")
+    def check_fields(self):
+        if not self.model_fields_set:
+            raise PydanticCustomError("nothing_to_update", "수정할 항목(grade, taken_year, taken_semester)이 없습니다")
+        # 성적은 비울 수 있지만, 들은 시기는 비울 수 없습니다.
+        for field in ("taken_year", "taken_semester"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise PydanticCustomError("time_required", "학년·학기는 비울 수 없습니다")
+        return self
 
 
 # =========================================================================

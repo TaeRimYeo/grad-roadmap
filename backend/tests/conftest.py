@@ -191,3 +191,38 @@ def admin(client, make_email):
         db.commit()
 
     return {"email": email, "name": "테스트관리자", "token": login(client, email)}
+
+
+@pytest.fixture
+def make_student(client, make_email):
+    """
+    학위과정·세부전공 이름을 골라서 학생 계정을 만들고 토큰을 돌려주는 함수.
+
+    student fixture 는 '첫 번째' 과정·전공을 쓰므로,
+    진단·과목 목록처럼 결과가 전공에 따라 달라지는 테스트에서는 이 fixture 로 이름을 직접 고릅니다.
+    """
+    options = client.get("/api/meta/signup-options").json()
+
+    def _make(program_name: str, major_name: str = "SW융합전공") -> str:
+        program = next(p for p in options["programs"] if p["name"] == program_name)
+        major = next(
+            m for m in options["majors"] if m["name"] == major_name and m["department_id"] == program["department_id"]
+        )
+        email = make_email()
+        res = client.post(
+            "/api/auth/signup",
+            json={
+                "email": email,
+                "password": TEST_PASSWORD,
+                "name": "진단테스트",
+                "student_no": "20260001",
+                "admission_year": 2026,
+                "department_id": program["department_id"],
+                "program_id": program["id"],
+                "major_id": major["id"],
+            },
+        )
+        assert res.status_code == 201, res.text
+        return login(client, email)
+
+    return _make

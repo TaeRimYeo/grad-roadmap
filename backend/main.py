@@ -24,7 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from db import get_db
-from routers import admin, auth, diagnose, meta
+from routers import admin, auth, completed, courses, diagnose, grades, meta
 
 # =========================================================================
 # 1. 앱 생성
@@ -116,6 +116,9 @@ app.include_router(auth.router)  # /api/auth/...  회원가입·로그인·내 �
 app.include_router(meta.router)  # /api/meta/...  드롭다운 선택지 (인증 불필요)
 app.include_router(admin.router)  # /api/admin/... 관리자 전용
 app.include_router(diagnose.router)  # /api/diagnose 졸업 진단 (로그인 필요)
+app.include_router(completed.router)  # /api/completed 이수 내역 저장 (로그인 필요)
+app.include_router(courses.router)  # /api/courses 과목 고르기 목록 (학생만)
+app.include_router(grades.router)  # /api/grades/summary 학점 요약 (로그인 필요)
 
 
 # =========================================================================

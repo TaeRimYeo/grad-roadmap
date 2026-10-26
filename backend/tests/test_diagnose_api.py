@@ -9,9 +9,7 @@ POST /api/diagnose 테스트.
 import csv
 import os
 
-import pytest
-
-from conftest import TEST_PASSWORD, auth_header, login
+from conftest import auth_header
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
@@ -27,41 +25,6 @@ def _sw_terms_1_to_4_codes() -> list[str]:
             and 1 <= int(r["term_index"]) <= 4
             and "현장실습" not in r["name"]
         ]
-
-
-@pytest.fixture
-def make_student(client, make_email):
-    """
-    학위과정·세부전공 이름을 골라서 학생 계정을 만들고 토큰을 돌려주는 함수.
-
-    conftest 의 student fixture 는 '첫 번째' 과정·전공을 쓰므로,
-    진단 결과가 전공에 따라 달라지는 이 테스트에서는 이름으로 직접 고릅니다.
-    """
-    options = client.get("/api/meta/signup-options").json()
-
-    def _make(program_name: str, major_name: str = "SW융합전공") -> str:
-        program = next(p for p in options["programs"] if p["name"] == program_name)
-        major = next(
-            m for m in options["majors"] if m["name"] == major_name and m["department_id"] == program["department_id"]
-        )
-        email = make_email()
-        res = client.post(
-            "/api/auth/signup",
-            json={
-                "email": email,
-                "password": TEST_PASSWORD,
-                "name": "진단테스트",
-                "student_no": "20260001",
-                "admission_year": 2026,
-                "department_id": program["department_id"],
-                "program_id": program["id"],
-                "major_id": major["id"],
-            },
-        )
-        assert res.status_code == 201, res.text
-        return login(client, email)
-
-    return _make
 
 
 def test_diagnose_success(client, make_student):

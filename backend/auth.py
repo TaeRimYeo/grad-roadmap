@@ -221,6 +221,22 @@ def get_current_user(
     return user
 
 
+def get_current_student(user: Annotated[User, Depends(get_current_user)]) -> User:
+    """
+    학과·학위과정이 있는 계정(학생)만 통과시키는 의존성 함수.
+
+    과목 목록·진단처럼 "내 학과의 교육과정" 이 있어야 하는 API 에 붙입니다.
+    관리자 계정은 학과가 없으므로 400 으로 막습니다.
+    (권한 문제라기보다 '이 계정으로는 계산할 재료가 없다' 는 뜻이라 403 대신 400)
+    """
+    if user.department_id is None or user.program_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="학생 계정만 사용할 수 있습니다",
+        )
+    return user
+
+
 def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
     """
     관리자만 통과시키는 의존성 함수.

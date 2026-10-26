@@ -509,6 +509,8 @@ class CompletedCourse(Base):
     """
 
     __tablename__ = "completed_courses"
+    # 중복 방지 부분 유니크 인덱스(uq_completed_user_course, uq_completed_user_custom_name)는
+    # 마이그레이션 스크립트에서 SQL 로 직접 만들었습니다. (scripts/migrate_completed_grades.py 참고)
     __table_args__ = {"comment": "학생의 과목 이수 이력"}
 
     id = Column(Integer, primary_key=True, comment="이수 이력 고유 ID")
@@ -536,6 +538,21 @@ class CompletedCourse(Base):
         comment="이수 구분 (전공필수/전공선택/교양필수/교양선택)",
     )
     taken_term = Column(Integer, nullable=False, comment="이수한 학기 번호 (통합 학기 기준)")
+    # 아래 4개 컬럼은 scripts/migrate_completed_grades.py 로 ALTER TABLE 추가한 컬럼입니다.
+    # 기존 행 때문에 DB 에서는 NULL 을 허용하지만, API 로 저장할 때는 학년·학기를 반드시 받습니다.
+    taken_year = Column(Integer, nullable=True, comment="들은 학년 (1~4)")
+    taken_semester = Column(
+        String(2), nullable=True, comment="들은 학기: '1' | '2' | '여름' | '겨울'"
+    )
+    grade = Column(
+        String(2), nullable=True, comment="성적: A+ A0 B+ B0 C+ C0 D+ D0 F P. NULL = 성적 모름"
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        comment="등록 시각",
+    )
 
     user = relationship("User", back_populates="completed_courses")
     course = relationship("Course", back_populates="completed_by")
