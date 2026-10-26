@@ -10,7 +10,7 @@
 //   시안의 StatusBar / HomeIndicator 는 이 역할을 흉내 낸 것이라 실제 앱에서는 쓰지 않는다.
 
 import { NavLink, Outlet } from 'react-router-dom'
-import { Home, GraduationCap, Map, User } from 'lucide-react'
+import { Home, ClipboardCheck, GraduationCap, Map, User } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 // ── 하단 탭 목록 ─────────────────────────────────────────────
@@ -21,8 +21,10 @@ type Tab = { to: string; label: string; icon: LucideIcon; end?: boolean }
 
 export const TABS: Tab[] = [
   { to: '/', label: '홈', icon: Home, end: true },
-  { to: '/diagnose', label: '진단', icon: GraduationCap },
+  { to: '/diagnose', label: '진단', icon: ClipboardCheck },
   { to: '/roadmap', label: '로드맵', icon: Map },
+  // /grades/add 에서도 켜져 있도록 end 를 주지 않는다
+  { to: '/grades', label: '학점', icon: GraduationCap },
   { to: '/my', label: '마이', icon: User },
 ]
 
