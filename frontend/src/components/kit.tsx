@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import {
   Bell,
+  ChevronDown,
   Home,
   GraduationCap,
   Map,
@@ -238,16 +239,22 @@ export function Progress({
 
 /* ── Buttons ─────────────────────────────────────────────────── */
 
+// 버튼은 <button> 의 기본 속성(type, onClick, disabled 등)을 그대로 넘겨받는다.
+// type 을 안 주면 "button" 으로 둬서, form 안에서 의도치 않게 제출되는 일을 막는다.
+// disabled 일 때는 흐리게 + 눌림 효과 없음.
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode }
+
 export function PrimaryButton({
   children,
   className = '',
-}: {
-  children: ReactNode
-  className?: string
-}) {
+  type = 'button',
+  ...rest
+}: ButtonProps) {
   return (
     <button
-      className={`min-h-[52px] w-full rounded-2xl bg-brand px-5 text-[16px] font-bold text-white shadow-[0_10px_24px_-8px_rgba(108,77,246,0.6)] transition active:scale-[0.99] ${className}`}
+      type={type}
+      {...rest}
+      className={`min-h-[52px] w-full rounded-2xl bg-brand px-5 text-[16px] font-bold text-white shadow-[0_10px_24px_-8px_rgba(108,77,246,0.6)] transition active:scale-[0.99] disabled:opacity-50 disabled:active:scale-100 ${className}`}
     >
       {children}
     </button>
@@ -257,13 +264,14 @@ export function PrimaryButton({
 export function SecondaryButton({
   children,
   className = '',
-}: {
-  children: ReactNode
-  className?: string
-}) {
+  type = 'button',
+  ...rest
+}: ButtonProps) {
   return (
     <button
-      className={`min-h-[52px] w-full rounded-2xl bg-lav px-5 text-[16px] font-bold text-brand transition active:scale-[0.99] ${className}`}
+      type={type}
+      {...rest}
+      className={`min-h-[52px] w-full rounded-2xl bg-lav px-5 text-[16px] font-bold text-brand transition active:scale-[0.99] disabled:opacity-50 disabled:active:scale-100 ${className}`}
     >
       {children}
     </button>
@@ -287,25 +295,140 @@ export function Field({
   )
 }
 
+// Input 은 두 가지 모드로 동작한다.
+//   1) onChange 가 없으면 → 시안용. 글자만 보여주는 <span> (기존 시안 화면이 이 모드)
+//   2) onChange 가 있으면 → 실제 <input>. 모양(클래스)은 시안과 똑같다
 export function Input({
   placeholder,
   value,
   trailing,
+  onChange,
+  type = 'text',
+  inputMode,
+  autoComplete,
+  maxLength,
 }: {
   placeholder?: string
   value?: string
   trailing?: ReactNode
+  onChange?: (value: string) => void
+  type?: 'text' | 'email' | 'password'
+  inputMode?: 'text' | 'email' | 'numeric'
+  autoComplete?: string
+  maxLength?: number
 }) {
   return (
-    <div className="flex min-h-[52px] items-center gap-2 rounded-2xl bg-white px-4 ring-1 ring-black/[0.06]">
-      <span
-        className={`flex-1 text-[15px] ${value ? 'text-ink' : 'text-[#a8a2bc]'}`}
-      >
-        {value || placeholder}
-      </span>
+    <div className="flex min-h-[52px] items-center gap-2 rounded-2xl bg-white px-4 ring-1 ring-black/[0.06] focus-within:ring-brand">
+      {onChange ? (
+        <input
+          type={type}
+          value={value ?? ''}
+          placeholder={placeholder}
+          inputMode={inputMode}
+          autoComplete={autoComplete}
+          maxLength={maxLength}
+          onChange={(e) => onChange(e.target.value)}
+          // min-w-0 : 칸이 좁아도 trailing 아이콘을 밀어내지 않게
+          className="min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-[#a8a2bc]"
+        />
+      ) : (
+        <span
+          className={`flex-1 text-[15px] ${value ? 'text-ink' : 'text-[#a8a2bc]'}`}
+        >
+          {value || placeholder}
+        </span>
+      )}
       {trailing}
     </div>
   )
+}
+
+/* ── 선택 입력 (Select · Segment · Choice) ──────────────────── */
+// 선택지 하나의 모양. value 는 서버로 보낼 값(보통 id), label 은 화면 글자.
+export type Option = { value: number; label: string }
+
+// 드롭다운. 시안의 Dropdown 과 같은 모양이고 실제로는 브라우저 기본 <select>.
+// 기본 <select> 를 쓰면 휴대폰에서 OS 의 선택 휠/목록이 떠서 터치하기 편하다.
+export function Select({
+  options,
+  value,
+  onChange,
+  placeholder = '선택해 주세요',
+  disabled = false,
+}: {
+  options: Option[]
+  value: number | null
+  onChange: (value: number) => void
+  placeholder?: string
+  disabled?: boolean
+}) {
+  return (
+    <div className="relative flex min-h-[52px] items-center rounded-2xl bg-white ring-1 ring-black/[0.06] focus-within:ring-brand">
+      <select
+        value={value ?? ''}
+        disabled={disabled}
+        onChange={(e) => onChange(Number(e.target.value))}
+        // appearance-none : 브라우저 기본 화살표를 숨기고 아래 ChevronDown 을 대신 보여준다
+        className={`min-h-[52px] w-full appearance-none bg-transparent pl-4 pr-10 text-[15px] font-medium outline-none disabled:opacity-50 ${
+          value === null ? 'text-[#a8a2bc]' : 'text-ink'
+        }`}
+      >
+        <option value="" disabled>
+          {placeholder}
+        </option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown size={20} className="pointer-events-none absolute right-4 text-[#a8a2bc]" />
+    </div>
+  )
+}
+
+// 세그먼트 버튼. 시안 3번(회원가입 2단계)의 학위과정·세부전공 버튼과 같은 모양.
+export function Segment({
+  options,
+  value,
+  onChange,
+}: {
+  options: Option[]
+  value: number | null
+  onChange: (value: number) => void
+}) {
+  return (
+    <div className="flex gap-1 rounded-2xl bg-lav p-1">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => onChange(o.value)}
+          className={`flex min-h-11 flex-1 items-center justify-center rounded-xl text-[14px] font-semibold ${
+            o.value === value ? 'bg-white text-brand shadow-sm' : 'text-[#7d76a0]'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// 선택지 개수에 따라 자동으로 고른다.
+//   3개 이하 → Segment (한눈에 보이고 한 번에 누를 수 있음)
+//   4개 이상 → Select  (375px 폭에 버튼이 너무 좁아지므로)
+export function Choice(props: {
+  options: Option[]
+  value: number | null
+  onChange: (value: number) => void
+  placeholder?: string
+}) {
+  // 선택지가 아직 없으면(상위 항목 미선택) 비활성 드롭다운으로 자리만 잡아 둔다
+  if (props.options.length === 0) {
+    return <Select {...props} disabled />
+  }
+  return props.options.length <= 3 ? <Segment {...props} /> : <Select {...props} />
 }
 
 export { Bell }
