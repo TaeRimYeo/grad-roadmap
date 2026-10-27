@@ -12,6 +12,7 @@ FastAPI 는 라우터 함수의 매개변수 타입이 Pydantic 모델이면
 그래서 라우터 안에서는 "값이 이미 올바르다" 고 믿고 로직만 짜면 됩니다.
 """
 
+import json
 import re
 from typing import Literal
 
@@ -303,6 +304,79 @@ class CompletedUpdate(BaseModel):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise PydanticCustomError("time_required", "학년·학기는 비울 수 없습니다")
         return self
+
+
+# ---- 로드맵 (POST /api/roadmap/generate, POST /api/roadmaps) ----
+
+# 직접 지정할 수 있는 시작 학기: 정규 6학기 + 추가 2학기 (solver.MAX_EXTRA_TERMS)
+MAX_START_TERM = 8
+# 저장할 수 있는 plan JSON 크기 상한 (보통 로드맵은 수십 KB). 지나치게 큰 요청을 막기 위함
+MAX_PLAN_BYTES = 200_000
+
+
+def _is_int(value) -> bool:
+    # bool 은 파이썬에서 int 의 한 종류(True == 1)라서 따로 막습니다.
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+class RoadmapGenerateRequest(BaseModel):
+    """
+    POST /api/roadmap/generate 요청. 본문을 아예 보내지 않거나 {} 를 보내도 됩니다.
+
+        {"start_term": 5}   ← 3학년 1학기부터 계획
+        {}                  ← 이수 내역의 가장 늦은 학기 + 1 (이수 내역이 없으면 1)
+    """
+
+    start_term: int | None = None
+
+    @field_validator("start_term", mode="before")
+    @classmethod
+    def validate_start_term(cls, value):
+        if value is not None and not (_is_int(value) and 1 <= value <= MAX_START_TERM):
+            raise PydanticCustomError("invalid_start_term", f"시작 학기는 1~{MAX_START_TERM} 사이여야 합니다")
+        return value
+
+
+class RoadmapSaveRequest(BaseModel):
+    """
+    POST /api/roadmaps 요청. generate 응답을 plan 에 그대로 넣어 보냅니다.
+
+        {"title": "3학년 계획", "start_term": 5, "plan": {...generate 응답...}}
+
+    title 을 빼거나 빈 문자열로 보내면 라우터가 '2026-10-27 로드맵' 처럼 날짜로 채웁니다.
+    """
+
+    title: str | None = Field(default=None, max_length=100)
+    # 졸업 가능한 학생은 자동 계산된 시작 학기가 9 일 수 있으므로 저장할 때는 상한을 넉넉히 둡니다.
+    start_term: int
+    plan: dict
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, value):
+        # 앞뒤 공백 제거. 공백만 있으면 '제목 없음' 으로 봅니다.
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
+
+    @field_validator("start_term", mode="before")
+    @classmethod
+    def validate_start_term(cls, value):
+        if not (_is_int(value) and 1 <= value <= 20):
+            raise PydanticCustomError("invalid_start_term", "시작 학기는 1 이상의 학기 번호여야 합니다")
+        return value
+
+    @field_validator("plan")
+    @classmethod
+    def validate_plan(cls, value: dict):
+        """generate 응답 모양인지 최소한만 확인합니다. (terms 목록, total_terms 숫자)"""
+        if not isinstance(value.get("terms"), list) or not _is_int(value.get("total_terms")):
+            raise PydanticCustomError("invalid_plan", "plan 은 로드맵 생성 결과(terms, total_terms 포함)여야 합니다")
+        # ensure_ascii=False : 한글을 \uXXXX 로 바꾸지 않고 그대로 세기 (실제 저장 크기에 가깝게)
+        if len(json.dumps(value, ensure_ascii=False).encode("utf-8")) > MAX_PLAN_BYTES:
+            raise PydanticCustomError("plan_too_large", "로드맵 데이터가 너무 큽니다")
+        return value
 
 
 # =========================================================================

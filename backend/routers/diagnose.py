@@ -96,6 +96,25 @@ def post_diagnose(
     return run_diagnose(db, user, body.to_plain())
 
 
+def completed_for_diagnose(rows) -> list[dict]:
+    """
+    DB 의 이수 내역 행들을 POST /api/diagnose 요청 본문(completed)과 같은 모양으로 바꿉니다.
+    GET /api/diagnose/me 와 로드맵 생성(routers/roadmap.py)이 함께 씁니다.
+
+    F 받은 과목은 '이수하지 못한 과목' 이므로 넣지 않습니다 (= 다시 들어야 하는 과목으로 진단됨).
+    """
+    completed = []
+    for row in rows:
+        if not is_passed(row.grade):
+            continue  # F → 진단 이수에서 제외
+        if row.course is not None:
+            completed.append({"code": row.course.code})
+        elif row.custom_name:
+            completed.append({"name": row.custom_name, "credits": row.credits, "category": row.category})
+        # 과목표에서 과목이 삭제돼 course_id 가 비고 이름도 없는 행은 계산할 수 없으므로 건너뜀
+    return completed
+
+
 @router.get("/diagnose/me")
 def get_my_diagnose(
     user: Annotated[User, Depends(get_current_student)],
@@ -105,15 +124,5 @@ def get_my_diagnose(
     저장된 이수 내역(GET /api/completed)으로 진단. 응답 모양은 POST /api/diagnose 와 같습니다.
 
     DB 의 이수 내역을 POST /api/diagnose 요청 본문과 같은 모양으로 바꿔서 run_diagnose() 에 넘깁니다.
-    F 받은 과목은 '이수하지 못한 과목' 이므로 넘기지 않습니다 (= 다시 들어야 하는 과목으로 진단됨).
     """
-    completed = []
-    for row in load_completed_rows(db, user):
-        if not is_passed(row.grade):
-            continue  # F → 진단 이수에서 제외
-        if row.course is not None:
-            completed.append({"code": row.course.code})
-        elif row.custom_name:
-            completed.append({"name": row.custom_name, "credits": row.credits, "category": row.category})
-        # 과목표에서 과목이 삭제돼 course_id 가 비고 이름도 없는 행은 계산할 수 없으므로 건너뜀
-    return run_diagnose(db, user, completed)
+    return run_diagnose(db, user, completed_for_diagnose(load_completed_rows(db, user)))

@@ -11,11 +11,18 @@
     backend/curriculum.py (이 파일) : DB 에서 읽어서 diagnose() 가 받는 dict 모양으로 바꿈
 """
 
+import json
+import os
+from functools import lru_cache
+
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
-from models import Course, Curriculum, Prerequisite, Requirement, RequirementCategory, User
+from models import Course, Curriculum, Prerequisite, Requirement, RequirementCategory, Section, User
+
+# 원본 졸업요건 파일 (load_term_rule 에서만 사용)
+REQUIREMENTS_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "requirements.json")
 
 
 def find_curriculum(db: Session, user: User) -> Curriculum:
@@ -110,3 +117,63 @@ def load_requirement(db: Session, curriculum: Curriculum, courses: list[dict]) -
         "major_min": major_min or 0,  # '전공' 요건이 없는 학과라면 0 으로 봄
         "required_courses": [c["code"] for c in courses if c["category"] == "전공필수"],
     }
+
+
+def load_sections(db: Session, curriculum: Curriculum) -> dict[str, list[dict]]:
+    """
+    교육과정의 분반(시간표)을 과목 code 별로 묶어 읽습니다. 로드맵 시간표 화면·겹침 검사용.
+
+        {"CM1107": [{"section_no": 1, "day": "화", "start_period": 2, "end_period": 4,
+                     "start_time": "10:30", "end_time": "13:20", "room": "C320", "professor": "..."}, ...]}
+
+    분반이 없는 과목은 결과에 들어가지 않습니다. (가져다 쓸 때 .get(code, []) 로 읽으면 됨)
+    """
+    rows = db.execute(
+        select(Course.code, Section)
+        .join(Section, Section.course_id == Course.id)
+        .where(Course.curriculum_id == curriculum.id)
+        .order_by(Course.code, Section.section_no, Section.id)
+    ).all()
+    result: dict[str, list[dict]] = {}
+    for code, s in rows:
+        result.setdefault(code, []).append(
+            {
+                "section_no": s.section_no,
+                "day": s.day,
+                "start_period": s.start_period,
+                "end_period": s.end_period,
+                "start_time": s.start_time,
+                "end_time": s.end_time,
+                "room": s.room,
+                "professor": s.professor,
+            }
+        )
+    return result
+
+
+@lru_cache
+def _requirements_file() -> dict:
+    """requirements.json 을 한 번만 읽어 둡니다. (lru_cache: 같은 함수를 다시 부르면 저장해 둔 결과를 돌려줌)"""
+    with open(REQUIREMENTS_JSON, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_term_rule(program_name: str) -> dict:
+    """
+    학위과정의 학기 학점 규칙(term_credit_rule)을 읽습니다. 솔버(solve_roadmap)에 그대로 넘기는 값입니다.
+
+        {"regular_terms": 6, "regular": {"min": 15, "max": 22},
+         "final_term": {"min": 10, ...}, "extra_terms": {"min": 10, ...}}
+
+    [왜 DB 가 아니라 json 인가]
+        DB requirements 테이블에는 학기당 최소·최대 학점만 있고,
+        '마지막 학기 10학점', '추가학기 10학점' 규칙을 담을 곳이 없습니다.
+        지금은 학과가 하나뿐이라 원본 파일(data/requirements.json)에서 읽습니다.
+
+    TODO: 다른 학과 추가 시 DB(requirements)로 이전
+    """
+    program = _requirements_file().get("programs", {}).get(program_name) or {}
+    rule = program.get("term_credit_rule")
+    if rule is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="학기 학점 규칙이 없는 학위과정입니다")
+    return rule

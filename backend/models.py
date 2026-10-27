@@ -581,6 +581,12 @@ class Roadmap(Base):
         nullable=False,
         comment="이 로드맵을 생성한 사용자 ID",
     )
+    # 아래 3개 컬럼은 scripts/migrate_roadmaps.py 로 ALTER TABLE 추가한 컬럼입니다.
+    # 목록 화면(GET /api/roadmaps)에서 JSON 을 열어보지 않고 바로 보여주려고 따로 둡니다.
+    # 기존 행 때문에 DB 에서는 NULL 을 허용하지만, API 로 저장할 때는 항상 채웁니다.
+    title = Column(String(100), nullable=True, comment="로드맵 제목 (예: '2026-10-27 로드맵')")
+    start_term = Column(Integer, nullable=True, comment="로드맵 시작 학기 번호 (1~8)")
+    total_terms = Column(Integer, nullable=True, comment="로드맵 학기 수 (졸업 가능이면 0)")
     # JSONB는 PostgreSQL 전용 타입으로, JSON 데이터를 효율적으로 저장/검색할 수 있게 해줍니다.
     params_json = Column(
         JSONB, nullable=False, comment="로드맵 생성에 사용된 입력 조건 (JSON)"

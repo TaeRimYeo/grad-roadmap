@@ -377,3 +377,138 @@ role은 서버에서 무조건 `student`로 고정 (요청값 무시)
 | 오류 | 메시지 |
 |---|---|
 | 401 | 로그인이 필요합니다 |
+
+---
+
+# 로드맵
+
+아래 API는 모두 헤더 `Authorization: Bearer <토큰>` 필요, **학생 계정만** 사용할 수 있습니다.
+저장된 로드맵은 **자기 것만** 보고 지울 수 있습니다 (남의 id → 404).
+
+## POST /api/roadmap/generate — 로드맵 생성 (저장 안 함)
+
+저장된 이수 내역(`GET /api/completed`)으로 진단(`GET /api/diagnose/me` 와 같은 계산)을 한 뒤,
+CP-SAT 솔버로 남은 과목을 학기별로 배치합니다. 1초 남짓 걸립니다.
+
+```json
+// 요청 — 본문 생략 또는 {} 가능
+{ "start_term": 5 }
+```
+
+- `start_term`: 계획을 시작할 통합 학기 번호 (1~8. 7·8 = 졸업유예 추가학기)
+- 생략하면 **이수 내역의 가장 늦은 `taken_term` + 1**. 이수 내역이 없으면 1
+  - F 받은 과목도 시작 학기 계산에는 포함 (그 학기에 다녔으므로). 진단에서는 F 를 미이수로 봄
+- 학기 학점 규칙(정규 15~22, 마지막 학기 최소 10, 추가학기 10~22)은 `backend/data/requirements.json` 의
+  `term_credit_rule` 에서 읽습니다. (TODO: 다른 학과 추가 시 DB(requirements)로 이전)
+
+```json
+// 200 응답
+{
+  "start_term": 5,
+  "feasible": true,
+  "message": null,
+  "reasons": [],
+  "total_terms": 2,
+  "placeholder_count": 1,
+  "summary": {
+    "total_remaining": 37,
+    "major_remaining": 1,
+    "required_missing": [ { "code": "CM3107", "name": "정보처리특론", "credits": 3 }, ... ]
+  },
+  "terms": [
+    {
+      "term": 5, "label": "3학년 1학기", "credits": 18,
+      "courses": [
+        { "code": "CM3108", "name": "캡스톤디자인1", "credits": 3, "category": "전공필수", "is_placeholder": false,
+          "sections": [
+            { "section_no": 1, "day": "화", "start_period": 3, "end_period": 4,
+              "start_time": "11:30", "end_time": "13:20", "room": "C116", "professor": "홍길동" }
+          ] },
+        { "code": "GE_B", "name": "교양 B", "credits": 2, "category": "교양선택", "is_placeholder": true,
+          "sections": [] }
+      ],
+      "conflicts": [ "자바프로그래밍응용과 C#프로그래밍의 수업 시간이 겹칩니다 (화 3~4교시)" ]
+    }
+  ]
+}
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `feasible` | 계획을 세울 수 있으면 `true`. `false` 면 `terms` 는 `[]`, 이유는 `reasons` (한국어 문장 목록) |
+| `message` | 이미 졸업 가능하면 `"이미 졸업 요건을 모두 채웠습니다"` (이때 `terms` 는 `[]`). 그 외 `null` |
+| `summary` | 진단 요약: 남은 총학점 · 남은 전공학점 · 아직 안 들은 전공필수 |
+| `terms[].label` | `1학년 1학기` … `3학년 2학기`, 7·8 학기는 `추가 1학기`, `추가 2학기` |
+| `courses[].sections` | 분반(시간표) 목록. 분반이 여러 개면 모두 들어 있음. 가상 과목은 `[]` |
+| `terms[].conflicts` | 같은 학기 안에서 수업 시간이 겹치는 과목 쌍 경고. **경고일 뿐 솔버 제약은 아님** |
+
+**겹침 판정 규칙** (`backend/timetable.py`)
+- 같은 요일이고 교시 구간이 한 칸이라도 겹치면 겹침. 3~4교시와 5~6교시는 안 겹침
+- 분반이 여러 개인 과목은 **모든 분반 조합이 겹칠 때만** 경고 (다른 분반을 고르면 피할 수 있으면 경고 없음)
+- 두 과목씩만 비교합니다 (세 과목이 얽혀야 생기는 충돌은 아직 잡지 못함)
+
+| 오류 | 메시지 |
+|---|---|
+| 401 | 로그인이 필요합니다 |
+| 400 | 학생 계정만 사용할 수 있습니다 |
+| 400 | 전공심화 과정 진단은 준비 중입니다 |
+| 400 | 더 이상 배치할 수 있는 학기가 없습니다 (자동 계산한 시작 학기가 9 이상) |
+| 404 | 적용할 교육과정이 없습니다 |
+| 404 | 학기 학점 규칙이 없는 학위과정입니다 |
+| 422 | 시작 학기는 1~8 사이여야 합니다 |
+
+## POST /api/roadmaps — 로드맵 저장
+
+```json
+// 요청 — plan 에는 generate 응답을 그대로 넣음
+{ "title": "3학년 계획", "start_term": 5, "plan": { ...generate 응답... } }
+```
+
+- `title`: 최대 100자. 생략하거나 공백이면 `"2026-10-27 로드맵"` 처럼 오늘 날짜(한국 시간)로 채움
+- `plan`: `terms`(목록)와 `total_terms`(숫자)가 있어야 함. 목록 화면의 `total_terms` 는 여기서 가져옴
+- 학생당 **최대 20개**
+
+```json
+// 201 응답
+{ "id": 12, "title": "3학년 계획", "start_term": 5, "total_terms": 2, "created_at": "2026-10-27T14:03:11.123456+09:00" }
+```
+
+| 오류 | 메시지 |
+|---|---|
+| 401 | 로그인이 필요합니다 |
+| 400 | 학생 계정만 사용할 수 있습니다 |
+| 409 | 로드맵은 최대 20개까지 저장할 수 있습니다 |
+| 422 | plan 은 로드맵 생성 결과(terms, total_terms 포함)여야 합니다 |
+| 422 | 로드맵 데이터가 너무 큽니다 (200KB 초과) |
+| 422 | 입력 형식 오류 (title 100자 초과 등) |
+
+## GET /api/roadmaps — 내 저장 목록
+
+최신순 (`created_at` 내림차순). `plan` 은 들어 있지 않습니다.
+
+```json
+// 200 응답
+[
+  { "id": 12, "title": "3학년 계획", "start_term": 5, "total_terms": 2, "created_at": "2026-10-27T14:03:11.123456+09:00" },
+  ...
+]
+```
+
+## GET /api/roadmaps/{id} — 하나 상세
+
+목록 항목 + `plan` (저장한 generate 응답 전체).
+
+```json
+// 200 응답
+{ "id": 12, "title": "3학년 계획", "start_term": 5, "total_terms": 2, "created_at": "...", "plan": { ... } }
+```
+
+## DELETE /api/roadmaps/{id} — 삭제
+
+`204` (본문 없음).
+
+| 오류 (상세·삭제 공통) | 메시지 |
+|---|---|
+| 401 | 로그인이 필요합니다 |
+| 400 | 학생 계정만 사용할 수 있습니다 |
+| 404 | 로드맵을 찾을 수 없습니다 (없는 id, 남의 로드맵) |

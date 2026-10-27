@@ -24,7 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from db import get_db
-from routers import admin, auth, completed, courses, diagnose, grades, meta
+from routers import admin, auth, completed, courses, diagnose, grades, meta, roadmap
 
 # =========================================================================
 # 1. 앱 생성
@@ -119,6 +119,7 @@ app.include_router(diagnose.router)  # /api/diagnose 졸업 진단 (로그인 �
 app.include_router(completed.router)  # /api/completed 이수 내역 저장 (로그인 필요)
 app.include_router(courses.router)  # /api/courses 과목 고르기 목록 (학생만)
 app.include_router(grades.router)  # /api/grades/summary 학점 요약 (로그인 필요)
+app.include_router(roadmap.router)  # /api/roadmap/generate, /api/roadmaps 로드맵 (학생만)
 
 
 # =========================================================================
